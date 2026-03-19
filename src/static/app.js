@@ -34,8 +34,8 @@ document.addEventListener("DOMContentLoaded", () => {
     technology: { label: "Technology", color: "#e8eaf6", textColor: "#3949ab" },
   };
 
-  // State for activities and filters
-  let allActivities = {};
+  // Track the currently open share dropdown
+  let activeShareDropdown = null;
   let currentFilter = "all";
   let searchQuery = "";
   let currentDay = "";
@@ -568,6 +568,17 @@ document.addEventListener("DOMContentLoaded", () => {
           </div>
         `
         }
+        <div class="share-container">
+          <button class="share-button" data-activity="${name}" aria-label="Share this activity">
+            📤 Share
+          </button>
+          <div class="share-dropdown hidden">
+            <button class="share-option" data-type="copy">🔗 Copy Link</button>
+            <button class="share-option" data-type="email">✉️ Email</button>
+            <button class="share-option" data-type="twitter">𝕏 Twitter/X</button>
+            <button class="share-option" data-type="facebook">📘 Facebook</button>
+          </div>
+        </div>
       </div>
     `;
 
@@ -587,7 +598,92 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
 
+    // Add share button click handler
+    const shareButton = activityCard.querySelector(".share-button");
+    const shareDropdown = activityCard.querySelector(".share-dropdown");
+    shareButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      // Use native Web Share API if available (mobile)
+      if (navigator.share) {
+        const shareUrl = buildActivityShareUrl(name);
+        navigator.share({
+          title: name,
+          text: `Check out this activity: ${name} - ${details.description}`,
+          url: shareUrl,
+        }).catch((error) => {
+          // Ignore AbortError (user cancelled) but log unexpected errors
+          if (error.name !== "AbortError") {
+            console.error("Error sharing activity:", error);
+          }
+        });
+      } else {
+        // Close any previously open dropdown
+        if (activeShareDropdown && activeShareDropdown !== shareDropdown) {
+          activeShareDropdown.classList.add("hidden");
+        }
+        // Toggle dropdown for desktop fallback
+        shareDropdown.classList.toggle("hidden");
+        activeShareDropdown = shareDropdown.classList.contains("hidden") ? null : shareDropdown;
+      }
+    });
+
+    // Add share option click handlers
+    const shareOptions = activityCard.querySelectorAll(".share-option");
+    shareOptions.forEach((option) => {
+      option.addEventListener("click", (event) => {
+        event.stopPropagation();
+        handleShareOption(option.dataset.type, name, details);
+        shareDropdown.classList.add("hidden");
+        activeShareDropdown = null;
+      });
+    });
+
     activitiesList.appendChild(activityCard);
+  }
+
+  // Build a shareable URL for an activity
+  function buildActivityShareUrl(activityName) {
+    const url = new URL(window.location.href);
+    url.search = "";
+    url.hash = "";
+    url.searchParams.set("activity", activityName);
+    return url.toString();
+  }
+
+  // Handle share option selection
+  function handleShareOption(type, activityName, details) {
+    const shareUrl = buildActivityShareUrl(activityName);
+    const shareText = `Check out this activity at Mergington High School: ${activityName} - ${details.description}`;
+
+    switch (type) {
+      case "copy":
+        navigator.clipboard.writeText(shareUrl).then(() => {
+          showMessage("Link copied to clipboard!", "success");
+        }).catch(() => {
+          showMessage("Could not copy link. Please copy it manually: " + shareUrl, "info");
+        });
+        break;
+      case "email":
+        window.open(
+          `mailto:?subject=${encodeURIComponent("Check out: " + activityName)}&body=${encodeURIComponent(shareText + "\n\n" + shareUrl)}`,
+          "_blank"
+        );
+        break;
+      case "twitter":
+        window.open(
+          `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`,
+          "_blank",
+          "noopener,noreferrer"
+        );
+        break;
+      case "facebook":
+        window.open(
+          `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`,
+          "_blank",
+          "noopener,noreferrer"
+        );
+        break;
+    }
   }
 
   // Event listeners for search and filter
@@ -600,6 +696,14 @@ document.addEventListener("DOMContentLoaded", () => {
     event.preventDefault();
     searchQuery = searchInput.value;
     displayFilteredActivities();
+  });
+
+  // Close the active share dropdown when clicking outside
+  document.addEventListener("click", () => {
+    if (activeShareDropdown) {
+      activeShareDropdown.classList.add("hidden");
+      activeShareDropdown = null;
+    }
   });
 
   // Add event listeners to category filter buttons
